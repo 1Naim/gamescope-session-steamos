@@ -12,25 +12,9 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-
-    container:
-      image: archlinux:base-devel
-
     steps:
-      - name: Setup build environment
-        run: |
-          # Install dependencies
-          sudo pacman -Sy --noconfirm git rsync
-
-          # Create builder user
-          useradd builder -m
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-
       - name: Clone Valve jupiter repo
-        run: |
-          git clone https://github.com/evlaV/jupiter.git /tmp/jupiter
-          chmod -R a+rw /tmp/jupiter
+        run: git clone https://github.com/evlaV/jupiter.git /tmp/jupiter
 
       - name: Get latest relevant gamescope commit
         id: upstream
@@ -66,20 +50,10 @@ jobs:
           echo "Upstream gamescope-session unchanged, skipping sync."
           exit 0
 
-      - name: Build gamescope package
+      - name: Bootstrap gamescope-session
         working-directory: /tmp/jupiter/gamescope
         run: |
-          patch -p2 < "$GITHUB_WORKSPACE/.github/cleanup-pkgbuild.patch"
-          sudo -H -E -u builder makepkg --skipchecksums --syncdeps --noconfirm
-
-      # ----------------------------
-      # Extract built package
-      # ----------------------------
-      - name: Extract gamescope package
-        run: |
-          mkdir -p /tmp/pkgroot
-          PKG=$(ls /tmp/jupiter/gamescope/*.pkg.tar.*)
-          bsdtar -xvf "$PKG" -C /tmp/pkgroot
+          pkgdir=/tmp/pkgroot "$GITHUB_WORKSPACE/.github/sync-jupiter.sh"
 
       - name: Sync installed filesystem
         run: |
@@ -88,16 +62,10 @@ jobs:
             /tmp/pkgroot/usr/ \
             usr/
 
-      # ----------------------------
-      # Record upstream commit hash
-      # ----------------------------
       - name: Update upstream commit record
         run: |
           echo "${{ steps.upstream.outputs.hash }}" > .github/.upstream-jupiter-commit
 
-      # ----------------------------
-      # Commit and push if changed
-      # ----------------------------
       - name: Commit and push updates
         run: |
           if git diff --quiet; then
